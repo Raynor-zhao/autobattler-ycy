@@ -15,10 +15,12 @@ class _HomePageState extends State<HomePage> {
   String _experienceResult = '';
   String _goldResult = '';
   String _turnResult = '';
+  String _cardResult = '';
   bool _isProcessing = false;
   bool _isExperienceProcessing = false;
   bool _isGoldProcessing = false;
   bool _isTurnProcessing = false;
+  bool _isCardProcessing = false;
   
   // Game state
   int _currentLevel = 1;
@@ -27,11 +29,15 @@ class _HomePageState extends State<HomePage> {
   int _winStreak = 0;
   int _loseStreak = 0;
   String _lastBattleResult = '';
+  
+  // Card pool state
+  Map<int, Map<String, int>> _cardPool = {};
 
   @override
   void initState() {
     super.initState();
     _fetchServerStatus();
+    _fetchCardPool();
   }
 
   Future<void> _fetchServerStatus() async {
@@ -51,6 +57,27 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _serverMessage = 'Error: $e';
       });
+    }
+  }
+
+  Future<void> _fetchCardPool() async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'get_pool'}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _cardPool = Map<int, Map<String, int>>.from(data['data']['cardPool']);
+          });
+        }
+      }
+    } catch (e) {
+      print('Error fetching card pool: $e');
     }
   }
 
@@ -311,6 +338,59 @@ Gold Gained: ${result['goldGained']}
     }
   }
 
+  Future<void> _processCardAction(String action, int cardCost, {int? cardStar, bool? isShopPurchase}) async {
+    setState(() {
+      _isCardProcessing = true;
+      _cardResult = 'Processing...';
+    });
+
+    try {
+      final cardData = {
+        'action': action,
+        'cardCost': cardCost,
+        'cardStar': cardStar,
+        'isShopPurchase': isShopPurchase
+      };
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(cardData),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          final result = data['data'];
+          setState(() {
+            if (result['cardPool'] != null) {
+              _cardPool[cardCost] = Map<String, int>.from(result['cardPool']);
+            } else if (result['cardPool'] is Map) {
+              _cardPool = Map<int, Map<String, int>>.from(result['cardPool']);
+            }
+            _cardResult = result['message'] + (result['cardsReturned'] != null ? ' (Returned ${result['cardsReturned']} cards)' : '');
+          });
+        } else {
+          setState(() {
+            _cardResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _cardResult = 'Failed to process card action: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cardResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isCardProcessing = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -432,6 +512,70 @@ Gold Gained: ${result['goldGained']}
             ElevatedButton(
               onPressed: _isTurnProcessing ? null : _processTurnStart,
               child: const Text('Start New Turn'),
+            ),
+            const SizedBox(height: 40),
+            const Text(
+              'Card Pool System:',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _cardResult,
+              style: TextStyle(fontSize: 16, color: Colors.red[700]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            // Card pool status display
+            if (_cardPool.isNotEmpty)
+              Column(
+                children: [
+                  for (int cost in [1, 2, 3, 4, 5])
+                    if (_cardPool.containsKey(cost))
+                      Text(
+                        '${cost}G Cards: ${_cardPool[cost]!['remaining']}/${_cardPool[cost]!['total']}',
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                ],
+              ),
+            const SizedBox(height: 20),
+            // Card action buttons
+            Column(
+              children: [
+                const Text('Card Actions:'),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton(
+                      onPressed: _isCardProcessing ? null : () => _processCardAction('buy', 1),
+                      child: const Text('Buy 1G Card'),
+                    ),
+                    ElevatedButton(
+                      onPressed: _isCardProcessing ? null : () => _processCardAction('sell', 1, cardStar: 1, isShopPurchase: true),
+                      child: const Text('Sell 1G Card'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    ElevatedButton(
+                      onPressed: _isCardProcessing ? null : () => _processCardAction('combine', 1, cardStar: 1),
+                      child: const Text('Combine 1G Cards'),
+                    ),
+                    ElevatedButton(
+                      onPressed: _isCardProcessing ? null : () => _processCardAction('sell', 1, cardStar: 2, isShopPurchase: true),
+                      child: const Text('Sell 2* 1G Card'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: _isCardProcessing ? null : _fetchCardPool,
+                  child: const Text('Refresh Card Pool'),
+                ),
+              ],
             ),
           ],
         ),

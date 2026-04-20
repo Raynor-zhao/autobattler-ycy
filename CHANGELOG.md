@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-04-20
+
+### Added
+- 服务端实现卡牌池管理系统，包括卡牌购买、卖出和合成逻辑
+- 客户端添加卡牌池交互功能，支持卡牌购买、卖出和合成操作
+- 实现卡牌池数量管理，根据卡牌等级和星级计算恢复数量
+- 新增卡牌池状态查询 API，用于获取当前卡牌池状态
+
+### Changed
+- 客户端 UI 布局优化，添加卡牌池状态显示和操作按钮
+- 服务端 API 扩展，新增 /api/cards 路由
+- 实现非商店购买卡牌的跟踪，确保准确恢复卡池数量
+
 ## [1.0.3] - 2026-04-20
 
 ### Added

@@ -315,6 +315,126 @@ app.post('/api/turn/start', (req, res) => {
   }
 });
 
+// Card pool management
+// Initialize card pool
+const cardPool = {
+  1: { total: 36, remaining: 36 },
+  2: { total: 36, remaining: 36 },
+  3: { total: 36, remaining: 36 },
+  4: { total: 18, remaining: 18 },
+  5: { total: 9, remaining: 9 }
+};
+
+// Track non-shop purchased cards
+const nonShopCards = {};
+
+// Process card actions
+app.post('/api/cards', (req, res) => {
+  try {
+    const { action, cardCost, cardStar, isShopPurchase, cardId } = req.body;
+    
+    // Validate data
+    if (!action || !cardCost) {
+      return res.status(400).json({ error: 'Missing required data' });
+    }
+    
+    // Validate card cost
+    if (cardCost < 1 || cardCost > 5) {
+      return res.status(400).json({ error: 'Invalid card cost' });
+    }
+    
+    // Validate card star
+    if (cardStar && (cardStar < 1 || cardStar > 3)) {
+      return res.status(400).json({ error: 'Invalid card star' });
+    }
+    
+    let result = {};
+    
+    switch (action) {
+      case 'buy':
+        // Buy card from shop
+        if (cardPool[cardCost].remaining <= 0) {
+          return res.status(400).json({ error: 'Card out of stock' });
+        }
+        
+        cardPool[cardCost].remaining--;
+        result = {
+          message: 'Card purchased successfully',
+          cardPool: cardPool[cardCost]
+        };
+        break;
+        
+      case 'sell':
+        // Sell card
+        if (isShopPurchase) {
+          // Calculate how many cards to return to pool based on star
+          let cardsToReturn = 1;
+          if (cardStar === 2) {
+            cardsToReturn = 3;
+          } else if (cardStar === 3) {
+            cardsToReturn = 9;
+          }
+          
+          // Return cards to pool
+          cardPool[cardCost].remaining = Math.min(
+            cardPool[cardCost].total,
+            cardPool[cardCost].remaining + cardsToReturn
+          );
+          result = {
+            message: 'Card sold successfully, returned to pool',
+            cardPool: cardPool[cardCost],
+            cardsReturned: cardsToReturn
+          };
+        } else {
+          // Non-shop purchased card, don't return to pool
+          result = {
+            message: 'Card sold successfully, not returned to pool',
+            cardPool: cardPool[cardCost]
+          };
+        }
+        break;
+        
+      case 'combine':
+        // Combine cards to higher star
+        if (!cardStar || cardStar < 1 || cardStar > 2) {
+          return res.status(400).json({ error: 'Invalid card star for combination' });
+        }
+        
+        // Track non-shop purchased cards for later selling
+        if (!nonShopCards[cardCost]) {
+          nonShopCards[cardCost] = 0;
+        }
+        nonShopCards[cardCost] += 3; // 3 cards to combine
+        
+        result = {
+          message: 'Cards combined successfully',
+          nonShopCards: nonShopCards[cardCost]
+        };
+        break;
+        
+      case 'get_pool':
+        // Get current card pool status
+        result = {
+          message: 'Card pool status retrieved',
+          cardPool: cardPool
+        };
+        break;
+        
+      default:
+        return res.status(400).json({ error: 'Invalid action' });
+    }
+    
+    // Return result
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error processing card action:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
