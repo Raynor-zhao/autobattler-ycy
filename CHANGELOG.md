@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2026-04-20
+
+### Added
+- 新增8x8棋盘系统
+- 玩家可上场区域：靠近下方的4行（行4-7，列0-7）
+- 敌方可上场区域：靠近上方的4行（行0-3，列0-7）
+- 服务端新增棋盘状态管理API：place_on_board、remove_from_board、get_board
+- 客户端新增棋盘UI显示，支持点击选择候补卡牌并放置到棋盘
+- 棋盘格子颜色区分：灰色区域不可放置，棋盘格可放置
+
+### Changed
+- 优化卡牌放置逻辑，通过棋盘界面直观选择位置
+
 ## [1.0.6] - 2026-04-20
 
 ### Fixed

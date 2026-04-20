@@ -35,12 +35,19 @@ class _HomePageState extends State<HomePage> {
   List<dynamic> _battlefieldCards = [];
   int _maxBenchSlots = 10;
   int _maxBattlefieldSlots = 1;
+  
+  List<List<dynamic?>> _playerBoard = List.generate(8, (_) => List<dynamic?>.filled(8, null));
+  int _boardRows = 8;
+  int _boardCols = 8;
+  int _playerStartRow = 4;
+  String? _selectedBenchCard;
 
   @override
   void initState() {
     super.initState();
     _fetchServerStatus();
     _fetchShop();
+    _fetchBoard();
   }
 
   Future<void> _fetchServerStatus() async {
@@ -60,6 +67,33 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _serverMessage = 'Error: $e';
       });
+  }
+
+  Future<void> _fetchBoard() async {
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': 'get_board'}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _playerBoard = List<List<dynamic?>>.from(
+              (data['data']['playerBoard'] as List).map(
+                (row) => List<dynamic?>.from(row.map((cell) => cell)),
+              ),
+            );
+            _boardRows = data['data']['boardInfo']['rows'] ?? 8;
+            _boardCols = data['data']['boardInfo']['cols'] ?? 8;
+            _playerStartRow = 4;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error fetching board: $e');
     }
   }
 
@@ -555,6 +589,173 @@ Gold Gained: ${result['goldGained']}
     }
   }
 
+  Future<void> _placeOnBoard(String cardId, int row, int col) async {
+    setState(() {
+      _isCardProcessing = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'place_on_board',
+          'cardId': cardId,
+          'row': row,
+          'col': col,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _playerBoard = List<List<dynamic?>>.from(
+              (data['data']['playerBoard'] as List).map(
+                (row) => List<dynamic?>.from(row.map((cell) => cell)),
+              ),
+            );
+            _benchCards = List<dynamic>.from(data['data']['benchCards'] ?? []);
+            _selectedBenchCard = null;
+            _cardResult = 'Card placed on board!';
+          });
+        } else {
+          setState(() {
+            _cardResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _cardResult = 'Failed to place card';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cardResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isCardProcessing = false;
+      });
+    }
+  }
+
+  Future<void> _removeFromBoard(int row, int col) async {
+    setState(() {
+      _isCardProcessing = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'remove_from_board',
+          'row': row,
+          'col': col,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _playerBoard = List<List<dynamic?>>.from(
+              (data['data']['playerBoard'] as List).map(
+                (row) => List<dynamic?>.from(row.map((cell) => cell)),
+              ),
+            );
+            _benchCards = List<dynamic>.from(data['data']['benchCards'] ?? []);
+            _cardResult = 'Card removed from board!';
+          });
+        } else {
+          setState(() {
+            _cardResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _cardResult = 'Failed to remove card';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cardResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isCardProcessing = false;
+      });
+    }
+  }
+
+  void _onBenchCardTap(String cardId) {
+    setState(() {
+      if (_selectedBenchCard == cardId) {
+        _selectedBenchCard = null;
+      } else {
+        _selectedBenchCard = cardId;
+      }
+    });
+  }
+
+  void _onBoardCellTap(int row, int col) {
+    if (_selectedBenchCard != null) {
+      if (row >= _playerStartRow && _playerBoard[row][col] == null) {
+        _placeOnBoard(_selectedBenchCard, row, col);
+      }
+    } else {
+      if (_playerBoard[row][col] != null) {
+        _removeFromBoard(row, col);
+      }
+    }
+  }
+
+  Widget _buildChessBoard() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black, width: 2),
+      ),
+      child: Column(
+        children: [
+          for (int row = 0; row < _boardRows; row++)
+            Row(
+              children: [
+                for (int col = 0; col < _boardCols; col++)
+                  GestureDetector(
+                    onTap: () => _onBoardCellTap(row, col),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _getCellColor(row, col),
+                        border: Border.all(color: Colors.grey, width: 0.5),
+                      ),
+                      child: _playerBoard[row][col] != null
+                          ? Center(
+                              child: Text(
+                                '${_playerBoard[row][col]['cost']}G',
+                                style: const TextStyle(fontSize: 10),
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Color _getCellColor(int row, int col) {
+    if (row < _playerStartRow) {
+      return Colors.grey[300]!;
+    } else {
+      return (row + col) % 2 == 0 ? Colors.white : Colors.green[100]!;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -606,28 +807,30 @@ Gold Gained: ${result['goldGained']}
             ),
             const SizedBox(height: 16),
             
-            Text('Bench (${_benchCards.length}/$_maxBenchSlots)', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Bench (${_benchCards.length}/$_maxBenchSlots) - Tap to select', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 for (var card in _benchCards)
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.orange),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        Text('${card['cost']}G ★${card['star'] ?? 1}'),
-                        const SizedBox(height: 4),
-                        ElevatedButton(
-                          onPressed: _isCardProcessing ? null : () => _placeCard(card['id']),
-                          child: const Text('Place'),
+                  GestureDetector(
+                    onTap: () => _onBenchCardTap(card['id']),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: _selectedBenchCard == card['id'] ? Colors.purple : Colors.orange,
+                          width: _selectedBenchCard == card['id'] ? 3 : 1,
                         ),
-                      ],
+                        borderRadius: BorderRadius.circular(8),
+                        color: _selectedBenchCard == card['id'] ? Colors.purple[100] : null,
+                      ),
+                      child: Column(
+                        children: [
+                          Text('${card['cost']}G ★${card['star'] ?? 1}'),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -660,6 +863,14 @@ Gold Gained: ${result['goldGained']}
                   ),
               ],
             ),
+            const SizedBox(height: 16),
+            
+            Text('Chess Board (8x8)', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _buildChessBoard(),
+            const SizedBox(height: 8),
+            Text(_selectedBenchCard != null ? 'Tap empty cell (rows 4-7) to place card' : 'Tap card on board to remove', 
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 16),
             
             Text(_cardResult, style: TextStyle(fontSize: 16, color: Colors.red[700])),

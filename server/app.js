@@ -336,6 +336,25 @@ const playerState = {
   maxBenchSlots: 10
 };
 
+// Chess board: 8x8 grid
+// Player's deployable area: rows 4-7 (bottom 4 rows), columns 0-7
+// Enemy's deployable area: rows 0-3 (top 4 rows), columns 0-7
+const BOARD_ROWS = 8;
+const BOARD_COLS = 8;
+const PLAYER_START_ROW = 4;
+const PLAYER_END_ROW = 7;
+
+const playerBoard = Array(BOARD_ROWS).fill(null).map(() => Array(BOARD_COLS).fill(null));
+const enemyBoard = Array(BOARD_ROWS).fill(null).map(() => Array(BOARD_COLS).fill(null));
+
+function isValidPlayerPosition(row, col) {
+  return row >= PLAYER_START_ROW && row < BOARD_ROWS && col >= 0 && col < BOARD_COLS;
+}
+
+function isValidEnemyPosition(row, col) {
+  return row >= 0 && row < PLAYER_START_ROW && col >= 0 && col < BOARD_COLS;
+}
+
 // Generate shop cards (5 cards)
 function generateShopCards() {
   const shopCards = [];
@@ -588,6 +607,87 @@ app.post('/api/cards', (req, res) => {
         result = {
           message: 'Card pool status retrieved',
           cardPool: cardPool
+        };
+        break;
+        
+      case 'place_on_board':
+        // Place card on board at specific position
+        const { row, col } = req.body;
+        
+        if (row === undefined || col === undefined) {
+          return res.status(400).json({ error: 'Row and column are required' });
+        }
+        
+        if (!isValidPlayerPosition(row, col)) {
+          return res.status(400).json({ error: 'Invalid position for player. Must be in rows 4-7' });
+        }
+        
+        if (playerBoard[row][col] !== null) {
+          return res.status(400).json({ error: 'Position is already occupied' });
+        }
+        
+        // Find card in bench
+        const benchCardIndexForBoard = playerState.benchCards.findIndex(c => c.id === cardId);
+        if (benchCardIndexForBoard === -1) {
+          return res.status(400).json({ error: 'Card not found in bench' });
+        }
+        
+        // Move card from bench to board
+        const cardToPlace = playerState.benchCards.splice(benchCardIndexForBoard, 1)[0];
+        playerBoard[row][col] = cardToPlace;
+        
+        result = {
+          message: 'Card placed on board',
+          playerBoard: playerBoard,
+          benchCards: playerState.benchCards
+        };
+        break;
+        
+      case 'remove_from_board':
+        // Remove card from board and return to bench
+        const removeRow = req.body.row;
+        const removeCol = req.body.col;
+        
+        if (removeRow === undefined || removeCol === undefined) {
+          return res.status(400).json({ error: 'Row and column are required' });
+        }
+        
+        if (!isValidPlayerPosition(removeRow, removeCol)) {
+          return res.status(400).json({ error: 'Invalid position' });
+        }
+        
+        if (playerBoard[removeRow][removeCol] === null) {
+          return res.status(400).json({ error: 'No card at this position' });
+        }
+        
+        if (playerState.benchCards.length >= playerState.maxBenchSlots) {
+          return res.status(400).json({ error: 'Bench is full' });
+        }
+        
+        // Move card from board to bench
+        const cardToRemove = playerBoard[removeRow][removeCol];
+        playerBoard[removeRow][removeCol] = null;
+        playerState.benchCards.push(cardToRemove);
+        
+        result = {
+          message: 'Card removed from board',
+          playerBoard: playerBoard,
+          benchCards: playerState.benchCards
+        };
+        break;
+        
+      case 'get_board':
+        // Get current board state
+        result = {
+          message: 'Board state retrieved',
+          playerBoard: playerBoard,
+          enemyBoard: enemyBoard,
+          boardInfo: {
+            rows: BOARD_ROWS,
+            cols: BOARD_COLS,
+            playerDeployableRows: `${PLAYER_START_ROW}-${PLAYER_END_ROW}`,
+            enemyDeployableRows: '0-3'
+          }
         };
         break;
         
