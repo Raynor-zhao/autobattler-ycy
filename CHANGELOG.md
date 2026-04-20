@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-04-20
+
+### Added
+- 服务端实现金币系统，包括胜利金币、连胜/连败奖励和剩余金币奖励
+- 客户端添加金币系统交互功能，支持金币奖励处理
+- 新增回合开始 API，同时处理经验和金币的获取
+- 实现连胜/连败系统，根据 streak 长度计算奖励
+
+### Changed
+- 客户端 UI 布局优化，添加金币系统状态显示和回合管理功能
+- 服务端 API 扩展，新增 /api/gold 和 /api/turn/start 路由
+- 战斗系统集成连胜/连败跟踪
+
 ## [1.0.2] - 2026-04-20
 
 ### Added

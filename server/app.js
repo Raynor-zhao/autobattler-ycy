@@ -179,6 +179,142 @@ app.post('/api/experience', (req, res) => {
   }
 });
 
+// Process gold system
+app.post('/api/gold', (req, res) => {
+  try {
+    // Get client data
+    const { currentGold, battleResult, winStreak, loseStreak, remainingGold } = req.body;
+    
+    // Validate data
+    if (currentGold === undefined || battleResult === undefined) {
+      return res.status(400).json({ error: 'Missing required data' });
+    }
+    
+    let newGold = currentGold || 0;
+    let goldGained = 0;
+    let streakBonus = 0;
+    let remainingBonus = 0;
+    
+    // Base gold for battle result
+    if (battleResult === 'victory') {
+      goldGained += 1; // Victory gives 1 gold
+    }
+    
+    // Calculate streak bonus
+    const winStreakCount = winStreak || 0;
+    const loseStreakCount = loseStreak || 0;
+    
+    if (winStreakCount > 0) {
+      if (winStreakCount >= 2 && winStreakCount <= 3) {
+        streakBonus = 1;
+      } else if (winStreakCount >= 4 && winStreakCount <= 5) {
+        streakBonus = 2;
+      } else if (winStreakCount >= 6) {
+        streakBonus = 3;
+      }
+    } else if (loseStreakCount > 0) {
+      if (loseStreakCount >= 2 && loseStreakCount <= 3) {
+        streakBonus = 1;
+      } else if (loseStreakCount >= 4 && loseStreakCount <= 5) {
+        streakBonus = 2;
+      } else if (loseStreakCount >= 6) {
+        streakBonus = 3;
+      }
+    }
+    
+    // Calculate remaining gold bonus (capped at 5)
+    if (remainingGold !== undefined) {
+      remainingBonus = Math.min(Math.floor(remainingGold / 10), 5);
+    }
+    
+    // Calculate total gold gain
+    const totalBonus = streakBonus + remainingBonus;
+    goldGained += totalBonus;
+    newGold += goldGained;
+    
+    // Return result
+    res.json({
+      success: true,
+      data: {
+        newGold,
+        goldGained,
+        streakBonus,
+        remainingBonus,
+        totalBonus
+      },
+      message: `Gold processed successfully. Gained ${goldGained} gold.`
+    });
+  } catch (error) {
+    console.error('Error processing gold:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Process turn start (for both experience and gold)
+app.post('/api/turn/start', (req, res) => {
+  try {
+    // Get client data
+    const { currentLevel, currentExperience, currentGold } = req.body;
+    
+    // Validate data
+    if (currentLevel === undefined || currentExperience === undefined || currentGold === undefined) {
+      return res.status(400).json({ error: 'Missing required data' });
+    }
+    
+    // Validate level range
+    if (currentLevel < 1 || currentLevel > 10) {
+      return res.status(400).json({ error: 'Invalid level' });
+    }
+    
+    let newLevel = currentLevel;
+    let newExperience = currentExperience;
+    let newGold = currentGold;
+    let experienceGained = 0;
+    let goldGained = 5; // Start of turn gives 5 gold
+    
+    // Process experience gain (start of turn)
+    if (newLevel < 10) {
+      experienceGained = 2;
+      newExperience += experienceGained;
+      
+      // Calculate required experience for next level
+      const requiredExperience = 2 * Math.pow(2, newLevel - 1);
+      
+      // Check for level up
+      let levelUps = 0;
+      while (newExperience >= requiredExperience && newLevel < 10) {
+        newExperience -= requiredExperience;
+        newLevel++;
+        levelUps++;
+      }
+    }
+    
+    // Process gold gain (start of turn)
+    newGold += goldGained;
+    
+    // Calculate required experience for next level after potential level up
+    const nextLevelRequiredExperience = newLevel < 10 ? 2 * Math.pow(2, newLevel - 1) : 0;
+    
+    // Return result
+    res.json({
+      success: true,
+      data: {
+        newLevel,
+        newExperience,
+        newGold,
+        experienceGained,
+        goldGained,
+        requiredExperience: nextLevelRequiredExperience,
+        maxLevelReached: newLevel >= 10
+      },
+      message: 'Turn started successfully'
+    });
+  } catch (error) {
+    console.error('Error processing turn start:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

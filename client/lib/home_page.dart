@@ -13,13 +13,20 @@ class _HomePageState extends State<HomePage> {
   String _serverMessage = 'Loading...';
   String _battleResult = '';
   String _experienceResult = '';
+  String _goldResult = '';
+  String _turnResult = '';
   bool _isProcessing = false;
   bool _isExperienceProcessing = false;
+  bool _isGoldProcessing = false;
+  bool _isTurnProcessing = false;
   
-  // Experience system state
+  // Game state
   int _currentLevel = 1;
   int _currentExperience = 0;
   int _gold = 10;
+  int _winStreak = 0;
+  int _loseStreak = 0;
+  String _lastBattleResult = '';
 
   @override
   void initState() {
@@ -82,6 +89,19 @@ Average Power: ${result['averagePower'].toStringAsFixed(2)}
 Unit Count: ${result['unitCount']}
 Result: ${result['battleResult']}
 ''';
+            _lastBattleResult = result['battleResult'];
+            
+            // Update streaks
+            if (result['battleResult'] == 'victory') {
+              _winStreak++;
+              _loseStreak = 0;
+            } else if (result['battleResult'] == 'defeat') {
+              _loseStreak++;
+              _winStreak = 0;
+            } else {
+              _winStreak = 0;
+              _loseStreak = 0;
+            }
           });
         } else {
           setState(() {
@@ -170,6 +190,127 @@ ${result['levelUps'] > 0 ? 'Level Ups: ${result['levelUps']}' : ''}
     }
   }
 
+  Future<void> _processGold() async {
+    if (_lastBattleResult.isEmpty) {
+      setState(() {
+        _goldResult = 'No battle result to process!';
+      });
+      return;
+    }
+
+    setState(() {
+      _isGoldProcessing = true;
+      _goldResult = 'Processing...';
+    });
+
+    try {
+      final goldData = {
+        'currentGold': _gold,
+        'battleResult': _lastBattleResult,
+        'winStreak': _winStreak,
+        'loseStreak': _loseStreak,
+        'remainingGold': _gold
+      };
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/gold'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(goldData),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          final result = data['data'];
+          setState(() {
+            _gold = result['newGold'];
+            _goldResult = '''
+Gold Result:
+New Gold: ${result['newGold']}
+Gold Gained: ${result['goldGained']}
+Streak Bonus: ${result['streakBonus']}
+Remaining Bonus: ${result['remainingBonus']}
+Total Bonus: ${result['totalBonus']}
+''';
+          });
+        } else {
+          setState(() {
+            _goldResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _goldResult = 'Failed to process gold: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _goldResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isGoldProcessing = false;
+      });
+    }
+  }
+
+  Future<void> _processTurnStart() async {
+    setState(() {
+      _isTurnProcessing = true;
+      _turnResult = 'Processing...';
+    });
+
+    try {
+      final turnData = {
+        'currentLevel': _currentLevel,
+        'currentExperience': _currentExperience,
+        'currentGold': _gold
+      };
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/turn/start'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(turnData),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          final result = data['data'];
+          setState(() {
+            _currentLevel = result['newLevel'];
+            _currentExperience = result['newExperience'];
+            _gold = result['newGold'];
+            _turnResult = '''
+Turn Start Result:
+New Level: ${result['newLevel']}
+Experience: ${result['newExperience']}/${result['requiredExperience']}
+Gold: ${result['newGold']}
+Experience Gained: ${result['experienceGained']}
+Gold Gained: ${result['goldGained']}
+''';
+          });
+        } else {
+          setState(() {
+            _turnResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _turnResult = 'Failed to process turn start: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _turnResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isTurnProcessing = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -212,9 +353,14 @@ ${result['levelUps'] > 0 ? 'Level Ups: ${result['levelUps']}' : ''}
               onPressed: _isProcessing ? null : _processBattle,
               child: _isProcessing ? const CircularProgressIndicator(color: Colors.white) : const Text('Process Battle'),
             ),
+            const SizedBox(height: 20),
+            Text(
+              'Win Streak: $_winStreak | Lose Streak: $_loseStreak',
+              style: const TextStyle(fontSize: 16),
+            ),
             const SizedBox(height: 40),
             const Text(
-              'Experience System:',
+              'Game State:',
               style: TextStyle(fontSize: 20),
             ),
             const SizedBox(height: 10),
@@ -230,7 +376,12 @@ ${result['levelUps'] > 0 ? 'Level Ups: ${result['levelUps']}' : ''}
               'Gold: $_gold',
               style: const TextStyle(fontSize: 18),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 40),
+            const Text(
+              'Experience System:',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 10),
             Text(
               _experienceResult,
               style: TextStyle(fontSize: 16, color: Colors.orange),
@@ -241,10 +392,6 @@ ${result['levelUps'] > 0 ? 'Level Ups: ${result['levelUps']}' : ''}
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton(
-                  onPressed: _isExperienceProcessing ? null : () => _processExperience('start_turn'),
-                  child: const Text('Start Turn'),
-                ),
-                ElevatedButton(
                   onPressed: _isExperienceProcessing ? null : () => _processExperience('buy_experience'),
                   child: const Text('Buy Experience (4G)'),
                 ),
@@ -253,6 +400,38 @@ ${result['levelUps'] > 0 ? 'Level Ups: ${result['levelUps']}' : ''}
                   child: const Text('Battle Reward (2G)'),
                 ),
               ],
+            ),
+            const SizedBox(height: 40),
+            const Text(
+              'Gold System:',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _goldResult,
+              style: TextStyle(fontSize: 16, color: Colors.yellow[700]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _isGoldProcessing ? null : _processGold,
+              child: const Text('Process Gold Reward'),
+            ),
+            const SizedBox(height: 40),
+            const Text(
+              'Turn Management:',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _turnResult,
+              style: TextStyle(fontSize: 16, color: Colors.purple),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _isTurnProcessing ? null : _processTurnStart,
+              child: const Text('Start New Turn'),
             ),
           ],
         ),
