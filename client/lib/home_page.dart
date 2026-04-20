@@ -11,6 +11,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   String _serverMessage = 'Loading...';
+  String _battleResult = '';
+  bool _isProcessing = false;
 
   @override
   void initState() {
@@ -38,13 +40,71 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _processBattle() async {
+    setState(() {
+      _isProcessing = true;
+      _battleResult = 'Processing...';
+    });
+
+    try {
+      // Sample battle data
+      final battleData = {
+        'units': [
+          {'id': 1, 'name': 'Knight', 'power': 250},
+          {'id': 2, 'name': 'Archer', 'power': 180},
+          {'id': 3, 'name': 'Mage', 'power': 320},
+          {'id': 4, 'name': 'Tank', 'power': 400},
+        ]
+      };
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/process'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(battleData),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          final result = data['data'];
+          setState(() {
+            _battleResult = '''
+Battle Result:
+Total Power: ${result['totalPower']}
+Average Power: ${result['averagePower'].toStringAsFixed(2)}
+Unit Count: ${result['unitCount']}
+Result: ${result['battleResult']}
+''';
+          });
+        } else {
+          setState(() {
+            _battleResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _battleResult = 'Failed to process battle: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _battleResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Autobattler'),
       ),
-      body: Center(
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
@@ -52,16 +112,32 @@ class _HomePageState extends State<HomePage> {
               'Server Status:',
               style: TextStyle(fontSize: 20),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
             Text(
               _serverMessage,
               style: TextStyle(fontSize: 16, color: Colors.blue),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
             ElevatedButton(
               onPressed: _fetchServerStatus,
-              child: const Text('Refresh'),
+              child: const Text('Check Server Status'),
+            ),
+            const SizedBox(height: 40),
+            const Text(
+              'Battle Processing:',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _battleResult,
+              style: TextStyle(fontSize: 16, color: Colors.green),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _isProcessing ? null : _processBattle,
+              child: _isProcessing ? const CircularProgressIndicator(color: Colors.white) : const Text('Process Battle'),
             ),
           ],
         ),
