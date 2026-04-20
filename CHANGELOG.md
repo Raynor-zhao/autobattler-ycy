@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-04-20
+
+### Added
+- 服务端实现经验系统，包括经验获取、等级提升和金币消耗逻辑
+- 客户端添加经验系统交互功能，支持回合开始、购买经验和战斗奖励操作
+- 实现经验系统的等级上限（10级）和经验需求计算（每级经验翻倍）
+
+### Changed
+- 客户端 UI 布局优化，添加经验系统状态显示
+- 服务端 API 扩展，新增 /api/experience 路由
+
 ## [1.0.1] - 2026-04-20
 
 ### Added

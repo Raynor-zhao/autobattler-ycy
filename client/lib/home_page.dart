@@ -12,7 +12,14 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String _serverMessage = 'Loading...';
   String _battleResult = '';
+  String _experienceResult = '';
   bool _isProcessing = false;
+  bool _isExperienceProcessing = false;
+  
+  // Experience system state
+  int _currentLevel = 1;
+  int _currentExperience = 0;
+  int _gold = 10;
 
   @override
   void initState() {
@@ -97,13 +104,79 @@ Result: ${result['battleResult']}
     }
   }
 
+  Future<void> _processExperience(String action) async {
+    if (_currentLevel >= 10) {
+      setState(() {
+        _experienceResult = 'Already at max level!';
+      });
+      return;
+    }
+
+    setState(() {
+      _isExperienceProcessing = true;
+      _experienceResult = 'Processing...';
+    });
+
+    try {
+      final experienceData = {
+        'currentLevel': _currentLevel,
+        'currentExperience': _currentExperience,
+        'action': action,
+        'gold': _gold
+      };
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/experience'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(experienceData),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          final result = data['data'];
+          setState(() {
+            _currentLevel = result['newLevel'];
+            _currentExperience = result['newExperience'];
+            _gold = result['newGold'];
+            _experienceResult = '''
+Experience Result:
+New Level: ${result['newLevel']}
+Experience: ${result['newExperience']}/${result['requiredExperience']}
+Gold: ${result['newGold']}
+Experience Gained: ${result['experienceGained']}
+Gold Spent: ${result['goldSpent']}
+${result['levelUps'] > 0 ? 'Level Ups: ${result['levelUps']}' : ''}
+''';
+          });
+        } else {
+          setState(() {
+            _experienceResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _experienceResult = 'Failed to process experience: ${response.statusCode}';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _experienceResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isExperienceProcessing = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Autobattler'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -138,6 +211,48 @@ Result: ${result['battleResult']}
             ElevatedButton(
               onPressed: _isProcessing ? null : _processBattle,
               child: _isProcessing ? const CircularProgressIndicator(color: Colors.white) : const Text('Process Battle'),
+            ),
+            const SizedBox(height: 40),
+            const Text(
+              'Experience System:',
+              style: TextStyle(fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Level: $_currentLevel',
+              style: const TextStyle(fontSize: 18),
+            ),
+            Text(
+              'Experience: $_currentExperience',
+              style: const TextStyle(fontSize: 18),
+            ),
+            Text(
+              'Gold: $_gold',
+              style: const TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _experienceResult,
+              style: TextStyle(fontSize: 16, color: Colors.orange),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(
+                  onPressed: _isExperienceProcessing ? null : () => _processExperience('start_turn'),
+                  child: const Text('Start Turn'),
+                ),
+                ElevatedButton(
+                  onPressed: _isExperienceProcessing ? null : () => _processExperience('buy_experience'),
+                  child: const Text('Buy Experience (4G)'),
+                ),
+                ElevatedButton(
+                  onPressed: _isExperienceProcessing ? null : () => _processExperience('battle_reward'),
+                  child: const Text('Battle Reward (2G)'),
+                ),
+              ],
             ),
           ],
         ),
