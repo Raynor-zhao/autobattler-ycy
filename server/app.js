@@ -328,87 +328,231 @@ const cardPool = {
 // Track non-shop purchased cards
 const nonShopCards = {};
 
+// Player state for shop and card slots
+const playerState = {
+  benchCards: [],
+  battlefieldCards: [],
+  currentLevel: 1,
+  maxBenchSlots: 10
+};
+
+// Generate shop cards (5 cards)
+function generateShopCards() {
+  const shopCards = [];
+  const cardTypes = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5];
+  
+  for (let i = 0; i < 5; i++) {
+    const randomIndex = Math.floor(Math.random() * cardTypes.length);
+    const cost = cardTypes[randomIndex];
+    
+    if (cardPool[cost].remaining > 0) {
+      shopCards.push({
+        id: `${cost}_${Date.now()}_${i}`,
+        cost: cost,
+        star: 1,
+        name: `Card_${cost}_${i}`
+      });
+    }
+  }
+  
+  return shopCards;
+}
+
+// Current shop cards
+let shopCards = generateShopCards();
+
 // Process card actions
 app.post('/api/cards', (req, res) => {
   try {
-    const { action, cardCost, cardStar, isShopPurchase, cardId } = req.body;
+    const { action, cardCost, cardStar, isShopPurchase, cardId, cardName, shopRefreshCost } = req.body;
     
     // Validate data
-    if (!action || !cardCost) {
+    if (!action) {
       return res.status(400).json({ error: 'Missing required data' });
-    }
-    
-    // Validate card cost
-    if (cardCost < 1 || cardCost > 5) {
-      return res.status(400).json({ error: 'Invalid card cost' });
-    }
-    
-    // Validate card star
-    if (cardStar && (cardStar < 1 || cardStar > 3)) {
-      return res.status(400).json({ error: 'Invalid card star' });
     }
     
     let result = {};
     
     switch (action) {
+      case 'get_shop':
+        // Get current shop cards
+        result = {
+          message: 'Shop cards retrieved',
+          shopCards: shopCards,
+          benchCards: playerState.benchCards,
+          battlefieldCards: playerState.battlefieldCards,
+          maxBenchSlots: playerState.maxBenchSlots,
+          maxBattlefieldSlots: playerState.currentLevel
+        };
+        break;
+        
+      case 'refresh_shop':
+        // Refresh shop (can get duplicate cards)
+        const refreshCost = shopRefreshCost || 2;
+        shopCards = generateShopCards();
+        result = {
+          message: `Shop refreshed for ${refreshCost} gold`,
+          shopCards: shopCards
+        };
+        break;
+        
       case 'buy':
         // Buy card from shop
-        if (cardPool[cardCost].remaining <= 0) {
+        if (playerState.benchCards.length >= playerState.maxBenchSlots) {
+          return res.status(400).json({ error: 'Bench is full' });
+        }
+        
+        // Find the card in shop
+        const cardIndex = shopCards.findIndex(c => c.id === cardId);
+        if (cardIndex === -1) {
+          return res.status(400).json({ error: 'Card not found in shop' });
+        }
+        
+        const card = shopCards[cardIndex];
+        
+        // Check card pool
+        if (cardPool[card.cost].remaining <= 0) {
           return res.status(400).json({ error: 'Card out of stock' });
         }
         
-        cardPool[cardCost].remaining--;
+        // Remove from shop
+        shopCards.splice(cardIndex, 1);
+        
+        // Add to bench
+        playerState.benchCards.push({
+          ...card,
+          isShopPurchase: true,
+          uniqueId: `${card.cost}_${Date.now()}`
+        });
+        
+        // Decrease card pool
+        cardPool[card.cost].remaining--;
+        
         result = {
           message: 'Card purchased successfully',
-          cardPool: cardPool[cardCost]
+          cardPool: cardPool,
+          benchCards: playerState.benchCards,
+          shopCards: shopCards
         };
         break;
         
       case 'sell':
-        // Sell card
+        // Sell card from bench or battlefield
+        const sellCost = cardCost || 1;
+        const sellStar = cardStar || 1;
+        
         if (isShopPurchase) {
-          // Calculate how many cards to return to pool based on star
           let cardsToReturn = 1;
-          if (cardStar === 2) {
+          if (sellStar === 2) {
             cardsToReturn = 3;
-          } else if (cardStar === 3) {
+          } else if (sellStar === 3) {
             cardsToReturn = 9;
           }
           
           // Return cards to pool
-          cardPool[cardCost].remaining = Math.min(
-            cardPool[cardCost].total,
-            cardPool[cardCost].remaining + cardsToReturn
+          cardPool[sellCost].remaining = Math.min(
+            cardPool[sellCost].total,
+            cardPool[sellCost].remaining + cardsToReturn
           );
           result = {
-            message: 'Card sold successfully, returned to pool',
-            cardPool: cardPool[cardCost],
+            message: `Card sold successfully, returned ${cardsToReturn} cards to pool`,
+            cardPool: cardPool[sellCost],
             cardsReturned: cardsToReturn
           };
         } else {
-          // Non-shop purchased card, don't return to pool
           result = {
             message: 'Card sold successfully, not returned to pool',
-            cardPool: cardPool[cardCost]
+            cardPool: cardPool[sellCost]
           };
         }
         break;
         
       case 'combine':
-        // Combine cards to higher star
+        // Combine cards to higher star (must be same card name/type)
         if (!cardStar || cardStar < 1 || cardStar > 2) {
           return res.status(400).json({ error: 'Invalid card star for combination' });
+        }
+        
+        // Find cards with same name in bench
+        if (!cardName) {
+          return res.status(400).json({ error: 'Card name required for combination' });
+        }
+        
+        // Count same cards in bench
+        const sameCards = playerState.benchCards.filter(c => c.name === cardName && c.star === cardStar);
+        
+        if (sameCards.length < 3) {
+          return res.status(400).json({ error: 'Need 3 identical cards to combine' });
         }
         
         // Track non-shop purchased cards for later selling
         if (!nonShopCards[cardCost]) {
           nonShopCards[cardCost] = 0;
         }
-        nonShopCards[cardCost] += 3; // 3 cards to combine
+        nonShopCards[cardCost] += 3;
         
         result = {
           message: 'Cards combined successfully',
-          nonShopCards: nonShopCards[cardCost]
+          nonShopCards: nonShopCards[cardCost],
+          newStar: cardStar + 1
+        };
+        break;
+        
+      case 'place_card':
+        // Place card from bench to battlefield
+        const battlefieldSize = playerState.battlefieldCards.length;
+        const maxBattlefieldSize = playerState.currentLevel;
+        
+        if (battlefieldSize >= maxBattlefieldSize) {
+          return res.status(400).json({ error: `Battlefield is full (max ${maxBattlefieldSize} cards)` });
+        }
+        
+        // Find card in bench
+        const benchCardIndex = playerState.benchCards.findIndex(c => c.id === cardId);
+        if (benchCardIndex === -1) {
+          return res.status(400).json({ error: 'Card not found in bench' });
+        }
+        
+        // Move card from bench to battlefield
+        const benchCard = playerState.benchCards.splice(benchCardIndex, 1)[0];
+        playerState.battlefieldCards.push(benchCard);
+        
+        result = {
+          message: 'Card placed to battlefield',
+          benchCards: playerState.benchCards,
+          battlefieldCards: playerState.battlefieldCards
+        };
+        break;
+        
+      case 'return_card':
+        // Return card from battlefield to bench
+        if (playerState.benchCards.length >= playerState.maxBenchSlots) {
+          return res.status(400).json({ error: 'Bench is full' });
+        }
+        
+        // Find card in battlefield
+        const battlefieldCardIndex = playerState.battlefieldCards.findIndex(c => c.id === cardId);
+        if (battlefieldCardIndex === -1) {
+          return res.status(400).json({ error: 'Card not found in battlefield' });
+        }
+        
+        // Move card from battlefield to bench
+        const battlefieldCard = playerState.battlefieldCards.splice(battlefieldCardIndex, 1)[0];
+        playerState.benchCards.push(battlefieldCard);
+        
+        result = {
+          message: 'Card returned to bench',
+          benchCards: playerState.benchCards,
+          battlefieldCards: playerState.battlefieldCards
+        };
+        break;
+        
+      case 'update_level':
+        // Update player level (affects battlefield size)
+        playerState.currentLevel = currentLevel || 1;
+        result = {
+          message: 'Player level updated',
+          maxBattlefieldSlots: playerState.currentLevel
         };
         break;
         

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-04-20
+
+### Added
+- 服务端实现商店系统，包括商店卡牌生成、刷新和购买逻辑
+- 客户端添加商店交互功能，支持卡牌购买、刷新和卡牌位管理
+- 实现等待卡牌位（10个）和战场卡牌位（等于玩家等级）
+- 添加卡牌放置到战场和返回候补的功能
+- 1星升级2星必须是相同的卡牌，不同卡牌不可合成
+- 商店刷新时可获得相同卡牌，3张相同卡牌不自动合成，必须购买后才可合成
+
+### Changed
+- 客户端 UI 重新设计，添加商店、候补区和战场区的显示
+- 服务端 API 扩展，新增 get_shop、refresh_shop、place_card、return_card 等操作
+- 卡牌池系统与商店系统集成
+
 ## [1.0.4] - 2026-04-20
 
 ### Added

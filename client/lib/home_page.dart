@@ -22,7 +22,6 @@ class _HomePageState extends State<HomePage> {
   bool _isTurnProcessing = false;
   bool _isCardProcessing = false;
   
-  // Game state
   int _currentLevel = 1;
   int _currentExperience = 0;
   int _gold = 10;
@@ -30,14 +29,18 @@ class _HomePageState extends State<HomePage> {
   int _loseStreak = 0;
   String _lastBattleResult = '';
   
-  // Card pool state
   Map<int, Map<String, int>> _cardPool = {};
+  List<dynamic> _shopCards = [];
+  List<dynamic> _benchCards = [];
+  List<dynamic> _battlefieldCards = [];
+  int _maxBenchSlots = 10;
+  int _maxBattlefieldSlots = 1;
 
   @override
   void initState() {
     super.initState();
     _fetchServerStatus();
-    _fetchCardPool();
+    _fetchShop();
   }
 
   Future<void> _fetchServerStatus() async {
@@ -60,24 +63,33 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _fetchCardPool() async {
+  Future<void> _fetchShop() async {
     try {
       final response = await http.post(
         Uri.parse('http://localhost:3000/api/cards'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': 'get_pool'}),
+        body: jsonEncode({'action': 'get_shop'}),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success']) {
           setState(() {
-            _cardPool = Map<int, Map<String, int>>.from(data['data']['cardPool']);
+            _shopCards = List<dynamic>.from(data['data']['shopCards'] ?? []);
+            _benchCards = List<dynamic>.from(data['data']['benchCards'] ?? []);
+            _battlefieldCards = List<dynamic>.from(data['data']['battlefieldCards'] ?? []);
+            _maxBenchSlots = data['data']['maxBenchSlots'] ?? 10;
+            _maxBattlefieldSlots = data['data']['maxBattlefieldSlots'] ?? 1;
+            _cardPool = Map<int, Map<String, int>>.from(
+              (data['data']['cardPool'] as Map?)?.map(
+                (key, value) => MapEntry(int.parse(key.toString()), Map<String, int>.from(value)),
+              ) ?? {},
+            );
           });
         }
       }
     } catch (e) {
-      print('Error fetching card pool: $e');
+      print('Error fetching shop: $e');
     }
   }
 
@@ -88,14 +100,12 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
-      // Sample battle data
       final battleData = {
-        'units': [
-          {'id': 1, 'name': 'Knight', 'power': 250},
-          {'id': 2, 'name': 'Archer', 'power': 180},
-          {'id': 3, 'name': 'Mage', 'power': 320},
-          {'id': 4, 'name': 'Tank', 'power': 400},
-        ]
+        'units': _battlefieldCards.map((c) => {
+          'id': c['id'],
+          'name': c['name'],
+          'power': (c['cost'] ?? 1) * 100 * (c['star'] ?? 1),
+        }).toList()
       };
 
       final response = await http.post(
@@ -112,13 +122,11 @@ class _HomePageState extends State<HomePage> {
             _battleResult = '''
 Battle Result:
 Total Power: ${result['totalPower']}
-Average Power: ${result['averagePower'].toStringAsFixed(2)}
 Unit Count: ${result['unitCount']}
 Result: ${result['battleResult']}
 ''';
             _lastBattleResult = result['battleResult'];
             
-            // Update streaks
             if (result['battleResult'] == 'victory') {
               _winStreak++;
               _loseStreak = 0;
@@ -186,13 +194,12 @@ Result: ${result['battleResult']}
             _currentLevel = result['newLevel'];
             _currentExperience = result['newExperience'];
             _gold = result['newGold'];
+            _maxBattlefieldSlots = result['newLevel'];
             _experienceResult = '''
 Experience Result:
 New Level: ${result['newLevel']}
 Experience: ${result['newExperience']}/${result['requiredExperience']}
 Gold: ${result['newGold']}
-Experience Gained: ${result['experienceGained']}
-Gold Spent: ${result['goldSpent']}
 ${result['levelUps'] > 0 ? 'Level Ups: ${result['levelUps']}' : ''}
 ''';
           });
@@ -257,7 +264,6 @@ New Gold: ${result['newGold']}
 Gold Gained: ${result['goldGained']}
 Streak Bonus: ${result['streakBonus']}
 Remaining Bonus: ${result['remainingBonus']}
-Total Bonus: ${result['totalBonus']}
 ''';
           });
         } else {
@@ -308,6 +314,7 @@ Total Bonus: ${result['totalBonus']}
             _currentLevel = result['newLevel'];
             _currentExperience = result['newExperience'];
             _gold = result['newGold'];
+            _maxBattlefieldSlots = result['newLevel'];
             _turnResult = '''
 Turn Start Result:
 New Level: ${result['newLevel']}
@@ -338,37 +345,26 @@ Gold Gained: ${result['goldGained']}
     }
   }
 
-  Future<void> _processCardAction(String action, int cardCost, {int? cardStar, bool? isShopPurchase}) async {
+  Future<void> _refreshShop() async {
     setState(() {
       _isCardProcessing = true;
-      _cardResult = 'Processing...';
+      _cardResult = 'Refreshing shop...';
     });
 
     try {
-      final cardData = {
-        'action': action,
-        'cardCost': cardCost,
-        'cardStar': cardStar,
-        'isShopPurchase': isShopPurchase
-      };
-
       final response = await http.post(
         Uri.parse('http://localhost:3000/api/cards'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(cardData),
+        body: jsonEncode({'action': 'refresh_shop', 'shopRefreshCost': 2}),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success']) {
-          final result = data['data'];
           setState(() {
-            if (result['cardPool'] != null) {
-              _cardPool[cardCost] = Map<String, int>.from(result['cardPool']);
-            } else if (result['cardPool'] is Map) {
-              _cardPool = Map<int, Map<String, int>>.from(result['cardPool']);
-            }
-            _cardResult = result['message'] + (result['cardsReturned'] != null ? ' (Returned ${result['cardsReturned']} cards)' : '');
+            _shopCards = List<dynamic>.from(data['data']['shopCards'] ?? []);
+            _gold -= 2;
+            _cardResult = 'Shop refreshed!';
           });
         } else {
           setState(() {
@@ -377,7 +373,175 @@ Gold Gained: ${result['goldGained']}
         }
       } else {
         setState(() {
-          _cardResult = 'Failed to process card action: ${response.statusCode}';
+          _cardResult = 'Failed to refresh shop';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cardResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isCardProcessing = false;
+      });
+    }
+  }
+
+  Future<void> _buyCard(String cardId, int cost) async {
+    if (_gold < cost) {
+      setState(() {
+        _cardResult = 'Not enough gold!';
+      });
+      return;
+    }
+
+    if (_benchCards.length >= _maxBenchSlots) {
+      setState(() {
+        _cardResult = 'Bench is full!';
+      });
+      return;
+    }
+
+    setState(() {
+      _isCardProcessing = true;
+      _cardResult = 'Buying card...';
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'buy',
+          'cardId': cardId,
+          'cardCost': cost,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _gold -= cost;
+            _shopCards = List<dynamic>.from(data['data']['shopCards'] ?? []);
+            _benchCards = List<dynamic>.from(data['data']['benchCards'] ?? []);
+            _cardPool = Map<int, Map<String, int>>.from(
+              (data['data']['cardPool'] as Map?)?.map(
+                (key, value) => MapEntry(int.parse(key.toString()), Map<String, int>.from(value)),
+              ) ?? {},
+            );
+            _cardResult = 'Card purchased!';
+          });
+        } else {
+          setState(() {
+            _cardResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _cardResult = 'Failed to buy card';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cardResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isCardProcessing = false;
+      });
+    }
+  }
+
+  Future<void> _placeCard(String cardId) async {
+    if (_battlefieldCards.length >= _maxBattlefieldSlots) {
+      setState(() {
+        _cardResult = 'Battlefield is full! (Max: $_maxBattlefieldSlots)';
+      });
+      return;
+    }
+
+    setState(() {
+      _isCardProcessing = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'place_card',
+          'cardId': cardId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _benchCards = List<dynamic>.from(data['data']['benchCards'] ?? []);
+            _battlefieldCards = List<dynamic>.from(data['data']['battlefieldCards'] ?? []);
+            _cardResult = 'Card placed to battlefield!';
+          });
+        } else {
+          setState(() {
+            _cardResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _cardResult = 'Failed to place card';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _cardResult = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        _isCardProcessing = false;
+      });
+    }
+  }
+
+  Future<void> _returnCard(String cardId) async {
+    if (_benchCards.length >= _maxBenchSlots) {
+      setState(() {
+        _cardResult = 'Bench is full!';
+      });
+      return;
+    }
+
+    setState(() {
+      _isCardProcessing = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cards'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'return_card',
+          'cardId': cardId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success']) {
+          setState(() {
+            _benchCards = List<dynamic>.from(data['data']['benchCards'] ?? []);
+            _battlefieldCards = List<dynamic>.from(data['data']['battlefieldCards'] ?? []);
+            _cardResult = 'Card returned to bench!';
+          });
+        } else {
+          setState(() {
+            _cardResult = 'Error: ${data['error']}';
+          });
+        }
+      } else {
+        setState(() {
+          _cardResult = 'Failed to return card';
         });
       }
     } catch (e) {
@@ -398,185 +562,151 @@ Gold Gained: ${result['goldGained']}
         title: const Text('Autobattler'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'Server Status:',
-              style: TextStyle(fontSize: 20),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Server: $_serverMessage', style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 8),
+            Text('Gold: $_gold | Level: $_currentLevel | XP: $_currentExperience', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('Win: $_winStreak | Lose: $_loseStreak', style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 16),
+            
+            const Text('=== Shop ===', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var card in _shopCards)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blue),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        Text('${card['cost']}G ★${card['star'] ?? 1}'),
+                        const SizedBox(height: 4),
+                        ElevatedButton(
+                          onPressed: _isCardProcessing ? null : () => _buyCard(card['id'], card['cost']),
+                          child: const Text('Buy'),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              _serverMessage,
-              style: TextStyle(fontSize: 16, color: Colors.blue),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 8),
             ElevatedButton(
-              onPressed: _fetchServerStatus,
-              child: const Text('Check Server Status'),
+              onPressed: _isCardProcessing ? null : _refreshShop,
+              child: const Text('Refresh Shop (2G)'),
             ),
-            const SizedBox(height: 40),
-            const Text(
-              'Battle Processing:',
-              style: TextStyle(fontSize: 20),
+            const SizedBox(height: 16),
+            
+            const Text('=== Bench (${}) ==='.split('()')[0] + '${_benchCards.length}/$_maxBenchSlots ===', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var card in _benchCards)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.orange),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        Text('${card['cost']}G ★${card['star'] ?? 1}'),
+                        const SizedBox(height: 4),
+                        ElevatedButton(
+                          onPressed: _isCardProcessing ? null : () => _placeCard(card['id']),
+                          child: const Text('Place'),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              _battleResult,
-              style: TextStyle(fontSize: 16, color: Colors.green),
-              textAlign: TextAlign.center,
+            const SizedBox(height: 16),
+            
+            const Text('=== Battlefield (${}) ==='.split('()')[0] + '${_battlefieldCards.length}/$_maxBattlefieldSlots ===', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var card in _battlefieldCards)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.red),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        Text('${card['cost']}G ★${card['star'] ?? 1}'),
+                        const SizedBox(height: 4),
+                        ElevatedButton(
+                          onPressed: _isCardProcessing ? null : () => _returnCard(card['id']),
+                          child: const Text('Return'),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isProcessing ? null : _processBattle,
-              child: _isProcessing ? const CircularProgressIndicator(color: Colors.white) : const Text('Process Battle'),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Win Streak: $_winStreak | Lose Streak: $_loseStreak',
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 40),
-            const Text(
-              'Game State:',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'Level: $_currentLevel',
-              style: const TextStyle(fontSize: 18),
-            ),
-            Text(
-              'Experience: $_currentExperience',
-              style: const TextStyle(fontSize: 18),
-            ),
-            Text(
-              'Gold: $_gold',
-              style: const TextStyle(fontSize: 18),
-            ),
-            const SizedBox(height: 40),
-            const Text(
-              'Experience System:',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _experienceResult,
-              style: TextStyle(fontSize: 16, color: Colors.orange),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            
+            Text(_cardResult, style: TextStyle(fontSize: 16, color: Colors.red[700])),
+            const SizedBox(height: 16),
+            
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                ElevatedButton(
-                  onPressed: _isExperienceProcessing ? null : () => _processExperience('buy_experience'),
-                  child: const Text('Buy Experience (4G)'),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isProcessing ? null : _processBattle,
+                    child: _isProcessing ? const CircularProgressIndicator() : const Text('Battle'),
+                  ),
                 ),
-                ElevatedButton(
-                  onPressed: _isExperienceProcessing ? null : () => _processExperience('battle_reward'),
-                  child: const Text('Battle Reward (2G)'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isTurnProcessing ? null : _processTurnStart,
+                    child: const Text('Start Turn'),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 40),
-            const Text(
-              'Gold System:',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _goldResult,
-              style: TextStyle(fontSize: 16, color: Colors.yellow[700]),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isGoldProcessing ? null : _processGold,
-              child: const Text('Process Gold Reward'),
-            ),
-            const SizedBox(height: 40),
-            const Text(
-              'Turn Management:',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _turnResult,
-              style: TextStyle(fontSize: 16, color: Colors.purple),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _isTurnProcessing ? null : _processTurnStart,
-              child: const Text('Start New Turn'),
-            ),
-            const SizedBox(height: 40),
-            const Text(
-              'Card Pool System:',
-              style: TextStyle(fontSize: 20),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _cardResult,
-              style: TextStyle(fontSize: 16, color: Colors.red[700]),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            // Card pool status display
-            if (_cardPool.isNotEmpty)
-              Column(
-                children: [
-                  for (int cost in [1, 2, 3, 4, 5])
-                    if (_cardPool.containsKey(cost))
-                      Text(
-                        '${cost}G Cards: ${_cardPool[cost]!['remaining']}/${_cardPool[cost]!['total']}',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                ],
-              ),
-            const SizedBox(height: 20),
-            // Card action buttons
-            Column(
+            const SizedBox(height: 8),
+            Row(
               children: [
-                const Text('Card Actions:'),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed: _isCardProcessing ? null : () => _processCardAction('buy', 1),
-                      child: const Text('Buy 1G Card'),
-                    ),
-                    ElevatedButton(
-                      onPressed: _isCardProcessing ? null : () => _processCardAction('sell', 1, cardStar: 1, isShopPurchase: true),
-                      child: const Text('Sell 1G Card'),
-                    ),
-                  ],
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isGoldProcessing ? null : _processGold,
+                    child: const Text('Gold Reward'),
+                  ),
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    ElevatedButton(
-                      onPressed: _isCardProcessing ? null : () => _processCardAction('combine', 1, cardStar: 1),
-                      child: const Text('Combine 1G Cards'),
-                    ),
-                    ElevatedButton(
-                      onPressed: _isCardProcessing ? null : () => _processCardAction('sell', 1, cardStar: 2, isShopPurchase: true),
-                      child: const Text('Sell 2* 1G Card'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _isCardProcessing ? null : _fetchCardPool,
-                  child: const Text('Refresh Card Pool'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _fetchShop,
+                    child: const Text('Refresh'),
+                  ),
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            
+            Text(_battleResult, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 8),
+            Text(_turnResult, style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 8),
+            Text(_goldResult, style: const TextStyle(fontSize: 14)),
           ],
         ),
       ),
