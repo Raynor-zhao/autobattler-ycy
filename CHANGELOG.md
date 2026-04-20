@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-04-20
+
+### Fixed
+- 修复服务端 update_level 操作中使用未定义变量的问题
+- 修复卡牌合成逻辑未实际移除和添加卡牌的bug
+- 修复客户端UI中字符串拼接错误问题
+
+### Changed
+- 优化卡牌合成逻辑，合成后实际从候补区移除3张卡并添加1张高星卡
+- 增强服务端参数验证
+
 ## [1.0.5] - 2026-04-20
 
 ### Added

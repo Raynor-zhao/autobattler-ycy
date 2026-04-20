@@ -606,7 +606,7 @@ Gold Gained: ${result['goldGained']}
             ),
             const SizedBox(height: 16),
             
-            const Text('=== Bench (${}) ==='.split('()')[0] + '${_benchCards.length}/$_maxBenchSlots ===', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Bench (${_benchCards.length}/$_maxBenchSlots)', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -634,7 +634,7 @@ Gold Gained: ${result['goldGained']}
             ),
             const SizedBox(height: 16),
             
-            const Text('=== Battlefield (${}) ==='.split('()')[0] + '${_battlefieldCards.length}/$_maxBattlefieldSlots ===', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Battlefield (${_battlefieldCards.length}/$_maxBattlefieldSlots)', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,

@@ -472,29 +472,51 @@ app.post('/api/cards', (req, res) => {
         if (!cardStar || cardStar < 1 || cardStar > 2) {
           return res.status(400).json({ error: 'Invalid card star for combination' });
         }
-        
+
         // Find cards with same name in bench
         if (!cardName) {
           return res.status(400).json({ error: 'Card name required for combination' });
         }
-        
+
         // Count same cards in bench
         const sameCards = playerState.benchCards.filter(c => c.name === cardName && c.star === cardStar);
-        
+
         if (sameCards.length < 3) {
           return res.status(400).json({ error: 'Need 3 identical cards to combine' });
         }
-        
+
+        // Remove 3 cards from bench
+        let cardsRemoved = 0;
+        playerState.benchCards = playerState.benchCards.filter(card => {
+          if (card.name === cardName && card.star === cardStar && cardsRemoved < 3) {
+            cardsRemoved++;
+            return false;
+          }
+          return true;
+        });
+
+        // Add combined card to bench
+        const combinedCard = {
+          id: `${cardName}_combined_${Date.now()}`,
+          cost: cardCost || 1,
+          star: cardStar + 1,
+          name: cardName,
+          isShopPurchase: true,
+          uniqueId: `${cardCost}_${Date.now()}_combined`
+        };
+        playerState.benchCards.push(combinedCard);
+
         // Track non-shop purchased cards for later selling
         if (!nonShopCards[cardCost]) {
           nonShopCards[cardCost] = 0;
         }
         nonShopCards[cardCost] += 3;
-        
+
         result = {
           message: 'Cards combined successfully',
           nonShopCards: nonShopCards[cardCost],
-          newStar: cardStar + 1
+          newStar: cardStar + 1,
+          benchCards: playerState.benchCards
         };
         break;
         
@@ -549,10 +571,15 @@ app.post('/api/cards', (req, res) => {
         
       case 'update_level':
         // Update player level (affects battlefield size)
-        playerState.currentLevel = currentLevel || 1;
+        const newLevel = req.body.newLevel || playerState.currentLevel;
+        if (newLevel < 1 || newLevel > 10) {
+          return res.status(400).json({ error: 'Invalid level' });
+        }
+        playerState.currentLevel = newLevel;
         result = {
           message: 'Player level updated',
-          maxBattlefieldSlots: playerState.currentLevel
+          maxBattlefieldSlots: playerState.currentLevel,
+          currentLevel: playerState.currentLevel
         };
         break;
         
